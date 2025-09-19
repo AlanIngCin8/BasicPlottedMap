@@ -5,7 +5,6 @@ Simple HTTP server to serve the BasicPlottedMap application
 import http.server
 import socketserver
 import os
-import sys
 
 PORT = 8000
 
