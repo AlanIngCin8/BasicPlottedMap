@@ -12,7 +12,7 @@ A web-based map viewing application that displays interactive maps with plotted 
 - **Fallback mode**: Graceful degradation when external resources are unavailable
 
 ### 📍 Point Plotting & Interaction
-- **Global city markers**: 10 major cities plotted worldwide
+- **Global city markers**: 20 major cities plotted worldwide (including Melbourne area points)
 - **Click to view details**: Interactive markers showing detailed information
 - **Hover tooltips**: City names displayed on mouse hover
 - **Mock API simulation**: Realistic API delay simulation for data fetching
@@ -44,9 +44,10 @@ A web-based map viewing application that displays interactive maps with plotted 
 - **Graceful degradation**: Fallback mode when external resources are blocked
 
 ### Data Sources
-- **Mock location API**: Returns 10 global cities with coordinates
-- **Mock details API**: Provides detailed information for each city
+- **Mock location API**: Returns 20 global cities with coordinates and realistic 500ms delay simulation
+- **Mock details API**: Provides detailed information for each city with 300ms delay simulation  
 - **SVG placeholder images**: Embedded data URIs for offline functionality
+- **GitHub Pages Compatible**: Pure client-side implementation, no server dependencies
 
 ## Getting Started
 
@@ -120,7 +121,9 @@ BasicPlottedMap/
 
 ## Cities Included
 
-The application includes 10 major global cities:
+The application includes 20 global locations:
+
+### Major International Cities
 - 🇺🇸 New York City
 - 🇬🇧 London
 - 🇯🇵 Tokyo
@@ -131,6 +134,18 @@ The application includes 10 major global cities:
 - 🇧🇷 São Paulo
 - 🇿🇦 Cape Town
 - 🇨🇦 Vancouver
+
+### Melbourne Metropolitan Area (for testing nearby functionality)
+- 🇦🇺 Melbourne (Cultural capital)
+- 🇦🇺 Geelong (Port city)
+- 🇦🇺 Ballarat (Historic gold rush city)
+- 🇦🇺 Bendigo (Regional city)
+- 🇦🇺 Mornington (Coastal town)
+- 🇦🇺 Dandenong Ranges (National park)
+- 🇦🇺 Frankston (Bayside suburb)
+- 🇦🇺 St Kilda (Famous beachside suburb)
+- 🇦🇺 Richmond (Inner-city suburb)
+- 🇦🇺 Footscray (Multicultural suburb)
 
 ## Browser Compatibility
 
