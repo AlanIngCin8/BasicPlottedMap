@@ -81,6 +81,125 @@ function initializeFallbackMap() {
 function setupEventListeners() {
     const nearbyBtn = document.getElementById('nearbyBtn');
     nearbyBtn.addEventListener('click', findNearbyPoints);
+    
+    // Stress test controls
+    const loadTestBtn = document.getElementById('loadTestBtn');
+    loadTestBtn.addEventListener('click', handleLoadTestData);
+}
+
+// Handle loading test data
+async function handleLoadTestData() {
+    const testSizeSelect = document.getElementById('testSizeSelect');
+    const testTypeSelect = document.getElementById('testTypeSelect');
+    const loadTestBtn = document.getElementById('loadTestBtn');
+    
+    const testSize = parseInt(testSizeSelect.value);
+    const testType = testTypeSelect.value;
+    
+    // Disable button during loading
+    loadTestBtn.disabled = true;
+    loadTestBtn.textContent = 'Loading...';
+    
+    try {
+        if (testSize === 0) {
+            // Load original data
+            await loadMapPoints(false);
+        } else {
+            // Load test data
+            await loadMapPoints(true, testSize, testType);
+        }
+    } finally {
+        // Re-enable button
+        loadTestBtn.disabled = false;
+        loadTestBtn.textContent = 'Load Test Data';
+    }
+}
+
+// ============================================================================
+// STRESS TESTING & PERFORMANCE
+// ============================================================================
+
+// Performance monitoring
+let performanceMetrics = {
+    loadTime: 0,
+    renderTime: 0,
+    pointCount: 0,
+    memoryUsage: 0,
+    clusterCount: 0,
+    generationTime: 0
+};
+
+// Performance analysis for different dataset sizes
+function analyzePerformance(metrics) {
+    const analysis = {
+        dataProcessingRate: Math.round(metrics.pointCount / metrics.generationTime * 1000), // points per second
+        memoryPerPoint: (metrics.memoryUsage / metrics.pointCount * 1024).toFixed(2), // KB per point
+        totalThroughput: Math.round(metrics.pointCount / (metrics.loadTime / 1000)), // points per second total
+        efficiency: metrics.pointCount > 1000 ? 'optimized' : 'standard'
+    };
+    
+    console.log('Performance Analysis:', {
+        pointsPerSecond: analysis.dataProcessingRate,
+        memoryPerPointKB: analysis.memoryPerPoint,
+        totalThroughput: analysis.totalThroughput,
+        efficiency: analysis.efficiency,
+        clusteringActive: metrics.clusterCount > 0
+    });
+    
+    return analysis;
+}
+
+// Generate large test datasets for stress testing
+function generateTestDataset(size, type = 'random') {
+    const startTime = performance.now();
+    const points = [];
+    
+    if (type === 'random') {
+        // Generate random points globally
+        for (let i = 0; i < size; i++) {
+            points.push({
+                id: i + 1000, // Offset to avoid conflicts with real data
+                name: `Test Point ${i + 1}`,
+                lat: (Math.random() - 0.5) * 180, // -90 to 90
+                lng: (Math.random() - 0.5) * 360, // -180 to 180
+                type: 'test',
+                description: `Generated test point ${i + 1} for stress testing`
+            });
+        }
+    } else if (type === 'clustered') {
+        // Generate clustered points around major cities
+        const centers = [
+            {lat: 40.7128, lng: -74.0060}, // NYC
+            {lat: 51.5074, lng: -0.1278},  // London
+            {lat: 35.6762, lng: 139.6503}, // Tokyo
+            {lat: -33.8688, lng: 151.2093}, // Sydney
+            {lat: 48.8566, lng: 2.3522}    // Paris
+        ];
+        
+        for (let i = 0; i < size; i++) {
+            const center = centers[Math.floor(Math.random() * centers.length)];
+            const radius = 0.5; // ~50km spread
+            const angle = Math.random() * 2 * Math.PI;
+            const distance = Math.random() * radius;
+            
+            points.push({
+                id: i + 1000,
+                name: `Clustered Point ${i + 1}`,
+                lat: center.lat + (distance * Math.cos(angle)),
+                lng: center.lng + (distance * Math.sin(angle)),
+                type: 'test-clustered',
+                description: `Clustered test point ${i + 1}`
+            });
+        }
+    }
+    
+    const generationTime = performance.now() - startTime;
+    console.log(`Generated ${size} ${type} points in ${generationTime.toFixed(2)}ms`);
+    
+    // Store generation time for analysis
+    performanceMetrics.generationTime = generationTime;
+    
+    return points;
 }
 
 // ============================================================================
@@ -88,9 +207,19 @@ function setupEventListeners() {
 // ============================================================================
 
 // Mock API function to get points data
-async function fetchMapPoints() {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+async function fetchMapPoints(testMode = false, testSize = 0, testType = 'random') {
+    const startTime = performance.now();
+    
+    // Simulate API delay (reduced for large datasets)
+    const delay = testMode && testSize > 1000 ? 100 : 500;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    
+    if (testMode && testSize > 0) {
+        const testPoints = generateTestDataset(testSize, testType);
+        performanceMetrics.loadTime = performance.now() - startTime;
+        performanceMetrics.pointCount = testSize;
+        return testPoints;
+    }
     
     // Mock data with various global locations
     return [
@@ -499,39 +628,190 @@ async function fetchPointDetails(pointId) {
 // MAP INTERACTION FUNCTIONS
 // ============================================================================
 
-async function loadMapPoints() {
-    updateStatus("Loading map points...");
+async function loadMapPoints(testMode = false, testSize = 0, testType = 'random') {
+    const totalStartTime = performance.now();
+    updateStatus(testMode ? `Loading ${testSize} test points...` : "Loading map points...");
     
     try {
-        const points = await fetchMapPoints();
+        const points = await fetchMapPoints(testMode, testSize, testType);
         allPoints = points;
+        
+        // Start render timing
+        const renderStartTime = performance.now();
         
         if (isLeafletAvailable && markersLayer) {
             // Clear existing markers
             markersLayer.clearLayers();
             
-            // Add markers for each point
-            points.forEach(point => {
-                const marker = L.marker([point.lat, point.lng])
-                    .bindPopup(`<strong>${point.name}</strong><br>${point.description}`)
-                    .on('click', () => handleMarkerClick(point));
+            // For large datasets, implement progressive loading and clustering
+            if (points.length > 1000) {
+                await loadPointsWithClustering(points);
+            } else {
+                // Standard loading for smaller datasets
+                points.forEach(point => {
+                    const marker = L.marker([point.lat, point.lng])
+                        .bindPopup(`<strong>${point.name}</strong><br>${point.description}`)
+                        .on('click', () => handleMarkerClick(point));
+                    
+                    markersLayer.addLayer(marker);
+                });
                 
-                markersLayer.addLayer(marker);
-            });
-            
-            // Fit map to show all markers
-            if (points.length > 0) {
-                const group = new L.featureGroup(markersLayer.getLayers());
-                map.fitBounds(group.getBounds().pad(0.1));
+                // Fit map to show all markers
+                if (points.length > 0) {
+                    const group = new L.featureGroup(markersLayer.getLayers());
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
             }
         }
         
-        updateStatus(`Loaded ${points.length} points`);
+        // Calculate performance metrics
+        const totalTime = performance.now() - totalStartTime;
+        performanceMetrics.renderTime = performance.now() - renderStartTime;
+        performanceMetrics.pointCount = points.length;
+        
+        // Report memory usage if available
+        if (performance.memory) {
+            performanceMetrics.memoryUsage = performance.memory.usedJSHeapSize / 1024 / 1024; // MB
+        }
+        
+        const statusMessage = testMode 
+            ? `Loaded ${points.length} test points (${totalTime.toFixed(0)}ms total, ${performanceMetrics.renderTime.toFixed(0)}ms render)`
+            : `Loaded ${points.length} points`;
+            
+        updateStatus(statusMessage);
+        
+        // Log detailed performance for test mode
+        if (testMode) {
+            console.log('Performance Metrics:', {
+                totalTime: totalTime.toFixed(2) + 'ms',
+                loadTime: performanceMetrics.loadTime.toFixed(2) + 'ms', 
+                renderTime: performanceMetrics.renderTime.toFixed(2) + 'ms',
+                generationTime: performanceMetrics.generationTime.toFixed(2) + 'ms',
+                pointCount: performanceMetrics.pointCount,
+                clusterCount: performanceMetrics.clusterCount,
+                memoryUsage: performanceMetrics.memoryUsage.toFixed(2) + 'MB'
+            });
+            
+            // Perform detailed analysis
+            analyzePerformance(performanceMetrics);
+        }
         
     } catch (error) {
         console.error('Error loading map points:', error);
         updateStatus("Error loading points");
     }
+}
+
+// Load points with clustering for better performance at scale
+async function loadPointsWithClustering(points) {
+    updateStatus(`Clustering ${points.length} points for better performance...`);
+    
+    // Simple grid-based clustering
+    const clusters = createGridClusters(points, 0.5); // 0.5 degree grid
+    performanceMetrics.clusterCount = clusters.length;
+    
+    console.log(`Created ${clusters.length} clusters from ${points.length} points`);
+    
+    clusters.forEach(cluster => {
+        if (cluster.points.length === 1) {
+            // Single point - add normal marker
+            const point = cluster.points[0];
+            const marker = L.marker([point.lat, point.lng])
+                .bindPopup(`<strong>${point.name}</strong><br>${point.description}`)
+                .on('click', () => handleMarkerClick(point));
+            markersLayer.addLayer(marker);
+        } else {
+            // Multiple points - add cluster marker
+            const centerLat = cluster.points.reduce((sum, p) => sum + p.lat, 0) / cluster.points.length;
+            const centerLng = cluster.points.reduce((sum, p) => sum + p.lng, 0) / cluster.points.length;
+            
+            const clusterIcon = L.divIcon({
+                className: 'cluster-marker',
+                html: `<div style="background: #ff6b35; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${cluster.points.length}</div>`,
+                iconSize: [30, 30]
+            });
+            
+            const clusterMarker = L.marker([centerLat, centerLng], { icon: clusterIcon })
+                .bindPopup(createClusterPopup(cluster.points))
+                .on('click', () => handleClusterClick(cluster));
+            
+            markersLayer.addLayer(clusterMarker);
+        }
+    });
+    
+    // Fit map to show all clusters
+    if (clusters.length > 0) {
+        const bounds = L.latLngBounds();
+        clusters.forEach(cluster => {
+            const centerLat = cluster.points.reduce((sum, p) => sum + p.lat, 0) / cluster.points.length;
+            const centerLng = cluster.points.reduce((sum, p) => sum + p.lng, 0) / cluster.points.length;
+            bounds.extend([centerLat, centerLng]);
+        });
+        map.fitBounds(bounds.pad(0.1));
+    }
+}
+
+// Create grid-based clusters
+function createGridClusters(points, gridSize) {
+    const clusters = new Map();
+    
+    points.forEach(point => {
+        const gridX = Math.floor(point.lat / gridSize);
+        const gridY = Math.floor(point.lng / gridSize);
+        const gridKey = `${gridX},${gridY}`;
+        
+        if (!clusters.has(gridKey)) {
+            clusters.set(gridKey, { points: [], gridX, gridY });
+        }
+        clusters.get(gridKey).points.push(point);
+    });
+    
+    return Array.from(clusters.values());
+}
+
+// Create popup content for clusters
+function createClusterPopup(points) {
+    const maxShow = 5;
+    let content = `<div><strong>Cluster (${points.length} points)</strong><br>`;
+    
+    points.slice(0, maxShow).forEach(point => {
+        content += `• ${point.name}<br>`;
+    });
+    
+    if (points.length > maxShow) {
+        content += `... and ${points.length - maxShow} more`;
+    }
+    
+    content += '</div>';
+    return content;
+}
+
+// Handle cluster click - zoom in or show details
+function handleClusterClick(cluster) {
+    if (map.getZoom() < 10) {
+        // Zoom in to cluster
+        const centerLat = cluster.points.reduce((sum, p) => sum + p.lat, 0) / cluster.points.length;
+        const centerLng = cluster.points.reduce((sum, p) => sum + p.lng, 0) / cluster.points.length;
+        map.setView([centerLat, centerLng], Math.min(map.getZoom() + 3, 15));
+    } else {
+        // Show cluster details
+        displayClusterDetails(cluster);
+    }
+}
+
+// Display cluster details in sidebar
+function displayClusterDetails(cluster) {
+    const details = {
+        title: `Cluster Details (${cluster.points.length} points)`,
+        description: `This cluster contains ${cluster.points.length} points in the same geographical area.`,
+        image: "data:image/svg+xml,%3Csvg width='300' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='300' height='200' fill='%23ff6b35'/%3E%3Ctext x='150' y='100' text-anchor='middle' fill='white' font-size='16'%3ECluster%3C/text%3E%3C/svg%3E",
+        data: [
+            { property: "Point Count", value: cluster.points.length.toString() },
+            { property: "Grid Location", value: `${cluster.gridX}, ${cluster.gridY}` },
+            { property: "Sample Points", value: cluster.points.slice(0, 3).map(p => p.name).join(', ') }
+        ]
+    };
+    displayPointDetails(details);
 }
 
 async function handleMarkerClick(point) {
