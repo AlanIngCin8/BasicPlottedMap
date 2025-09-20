@@ -115,6 +115,46 @@ async function handleLoadTestData() {
     }
 }
 
+// Automated stress test runner for performance analysis
+async function runStressTestSuite() {
+    console.log('🚀 Starting Automated Stress Test Suite...');
+    
+    const testSizes = [100, 1000, 10000, 50000, 100000];
+    const testTypes = ['random', 'clustered'];
+    const results = [];
+    
+    for (const size of testSizes) {
+        for (const type of testTypes) {
+            console.log(`📊 Testing ${size} ${type} points...`);
+            
+            const startTime = performance.now();
+            await loadMapPoints(true, size, type);
+            const endTime = performance.now();
+            
+            results.push({
+                size,
+                type,
+                loadTime: performanceMetrics.loadTime,
+                renderTime: performanceMetrics.renderTime,
+                generationTime: performanceMetrics.generationTime,
+                totalTime: endTime - startTime,
+                memoryUsage: performanceMetrics.memoryUsage,
+                clusterCount: performanceMetrics.clusterCount
+            });
+            
+            // Wait a bit between tests
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    
+    console.log('✅ Stress Test Suite Complete!');
+    console.table(results);
+    return results;
+}
+
+// Export function for console usage
+window.runStressTestSuite = runStressTestSuite;
+
 // ============================================================================
 // STRESS TESTING & PERFORMANCE
 // ============================================================================
